@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from aip import AipOcr
 from PIL import Image
 import pytesseract as tess
 
@@ -10,7 +11,6 @@ def dobinaryzation(img):
     """
     maxi = float(img.max())
     mini = float(img.min())
-
     x = maxi - ((maxi - mini) / 2)
     # 二值化,返回阈值ret  和  二值化操作后的图像thresh
     ret, thresh = cv2.threshold(img, x, 255, cv2.THRESH_BINARY)
@@ -22,23 +22,18 @@ def dobinaryzation(img):
 def stretch(img):
     max_ = float(img.max())
     min_ = float(img.min())
-
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
             img[i, j] = 255 / (max_ - min_) * img[i, j] - (255 * min_) / (max_ - min_)
     return img
 
 
+# 寻找矩形轮廓
 def find_rectangle(contour):
-    """
-    寻找矩形轮廓
-    """
     y, x = [], []
-
     for p in contour:
         y.append(p[0][0])
         x.append(p[0][1])
-
     return [min(y), min(x), max(y), max(x)]
 
 
@@ -156,83 +151,95 @@ def license_segment(car_plate):
     return "card_img.jpg"
 
 
-orgimg = cv2.imread('honda.jpg')
-cv2.imshow('car.jpg', orgimg)
-cv2.waitKey(0)
+if __name__ == '__main__':
+    orgimg = cv2.imread('buck.jpg')
+    cv2.imshow('car.jpg', orgimg)
+    cv2.waitKey(0)
 
-# 压缩图像
-img = cv2.resize(orgimg, (400, int(400 * orgimg.shape[0] / orgimg.shape[1])))
-# 灰度图
-grayimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-cv2.imshow('grayimg', grayimg)
-cv2.waitKey(0)
+    # 压缩图像
+    img = cv2.resize(orgimg, (400, int(400 * orgimg.shape[0] / orgimg.shape[1])))
+    # 灰度图
+    grayimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    cv2.imshow('grayimg', grayimg)
+    cv2.waitKey(0)
 
-stretchedimg = stretch(grayimg)
-cv2.imshow('stretchedimg', stretchedimg)
-cv2.waitKey(0)
+    stretchedimg = stretch(grayimg)
+    cv2.imshow('stretchedimg', stretchedimg)
+    cv2.waitKey(0)
 
-# 先定义一个元素结构
-r = 16
-h = w = r * 2 + 1
-kernel = np.zeros((h, w), dtype=np.uint8)
-cv2.circle(kernel, (r, r), r, 1, -1)
+    # 先定义一个元素结构
+    r = 16
+    h = w = r * 2 + 1
+    kernel = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(kernel, (r, r), r, 1, -1)
 
-# 开运算
-openingimg = cv2.morphologyEx(stretchedimg, cv2.MORPH_OPEN, kernel)
+    # 开运算
+    openingimg = cv2.morphologyEx(stretchedimg, cv2.MORPH_OPEN, kernel)
 
-# 获取差分图
-strtimg = cv2.absdiff(stretchedimg, openingimg)
+    # 获取差分图
+    strtimg = cv2.absdiff(stretchedimg, openingimg)
 
-# 在对图像进行边缘检测之前，，先对图像进行二值化
-binary_img = dobinaryzation(strtimg)
+    # 在对图像进行边缘检测之前，，先对图像进行二值化
+    binary_img = dobinaryzation(strtimg)
 
-# 使用Canny函数做边缘检测
-cannyimg = cv2.Canny(binary_img, binary_img.shape[0], binary_img.shape[1])
+    # 使用Canny函数做边缘检测
+    cannyimg = cv2.Canny(binary_img, binary_img.shape[0], binary_img.shape[1])
 
-# 进行闭运算
-kernel = np.ones((5, 19), np.uint8)
-closing_img = cv2.morphologyEx(cannyimg, cv2.MORPH_CLOSE, kernel)
+    # 进行闭运算
+    kernel = np.ones((5, 19), np.uint8)
+    closing_img = cv2.morphologyEx(cannyimg, cv2.MORPH_CLOSE, kernel)
 
-# 进行开运算
-opening_img = cv2.morphologyEx(closing_img, cv2.MORPH_OPEN, kernel)
+    # 进行开运算
+    opening_img = cv2.morphologyEx(closing_img, cv2.MORPH_OPEN, kernel)
 
-# 再次进行开运算
-kernel = np.ones((11, 5), np.uint8)
-opening_img = cv2.morphologyEx(opening_img, cv2.MORPH_OPEN, kernel)
+    # 再次进行开运算
+    kernel = np.ones((11, 5), np.uint8)
+    opening_img = cv2.morphologyEx(opening_img, cv2.MORPH_OPEN, kernel)
 
-# 膨胀
-kernel_2 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-kernel_dilated = cv2.dilate(opening_img, kernel_2)
-cv2.imshow('kernel_dilated', kernel_dilated)
-cv2.waitKey(0)
+    # 膨胀
+    kernel_2 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    kernel_dilated = cv2.dilate(opening_img, kernel_2)
+    cv2.imshow('kernel_dilated', kernel_dilated)
+    cv2.waitKey(0)
 
-# eroded = cv2.erode(kernel_dilated, kernel, iterations=3)        #腐蚀图像
-# cv2.imshow('kernel_dilated', eroded)
-# cv2.waitKey(0)
+    # eroded = cv2.erode(kernel_dilated, kernel, iterations=3)        #腐蚀图像
+    # cv2.imshow('kernel_dilated', eroded)
+    # cv2.waitKey(0)
 
-contours, hierarchy = cv2.findContours(kernel_dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-
-# temp = np.ones(binary_img.shape,np.uint8)*255
-# cv2.drawContours(temp,contours,-1,(0,255,0),3)
-# cv2.imshow("contours",temp)
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()
-# i = 0
-# for contour in contours:
-#     print('This is: ' + str(i))
-#     print(cv2.contourArea(contour))
-#     print(contour)
-#     i += 1
+    contours, hierarchy = cv2.findContours(kernel_dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
 
-car_plate = chose_licence_plate(contours, img)
-card_image = license_segment(car_plate)
+    # temp = np.ones(binary_img.shape,np.uint8)*255
+    # cv2.drawContours(temp,contours,-1,(0,255,0),3)
+    # cv2.imshow("contours",temp)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    # i = 0
+    # for contour in contours:
+    #     print('This is: ' + str(i))
+    #     print(cv2.contourArea(contour))
+    #     print(contour)
+    #     i += 1
 
-# src = cv2.imread('card_image.jpg')
-# cv2.namedWindow("input image", cv2.WINDOW_AUTOSIZE)
-# cv2.imshow("input image", src)
-# recognize_text()
-cv2.waitKey(0)
 
-cv2.destroyAllWindows()
+    car_plate = chose_licence_plate(contours, img)
+    card_image = license_segment(car_plate)
+
+    # src = cv2.imread('card_image.jpg')
+    # cv2.namedWindow("input image", cv2.WINDOW_AUTOSIZE)
+    # cv2.imshow("input image", src)
+    # recognize_text()
+    # cv2.waitKey(0)
+
+    cv2.destroyAllWindows()
+
+    # 能力有限，本来想用tessert-OCR来做文字识别效果好差
+    api_id = '17684461'
+    api_key = 'Nm58cAnvvYkENMKhIkRDWo54'
+    secret_key = '9qBCutan9qBnnlseGC8gCoWb2cN7dYYQ'
+    client = AipOcr(api_id, api_key, secret_key)
+    with open('card_img.jpg', 'rb') as f:
+        img = f.read()
+    text = client.basicGeneral(img)
+    for each in text.get('words_result'):
+        print(each.get('words'))
