@@ -5,6 +5,7 @@ from PIL import Image
 import pytesseract as tess
 
 
+
 def dobinaryzation(img):
     """
     二值化处理函数
